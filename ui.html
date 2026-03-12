@@ -3,34 +3,60 @@
 <head>
   <style>
     body { font-family: sans-serif; padding: 12px; font-size: 11px; color: #333; }
-    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-    input[type="number"] { width: 45px; padding: 4px; border: 1px solid #ccc; border-radius: 2px; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+    select, input[type="number"] { padding: 4px; border: 1px solid #ccc; border-radius: 2px; font-size: 11px; }
+    .btn-group { display: flex; gap: 8px; margin-top: 12px; }
     button { 
-      width: 100%; padding: 8px; background: #18A0FB; color: white; border: none; 
-      border-radius: 4px; cursor: pointer; font-weight: 500;
+      flex: 1; padding: 8px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500;
     }
-    button:hover { background: #0D8DE3; }
-    .label { font-weight: 500; }
+    #apply { background: #18A0FB; color: white; }
+    #revert { background: #E5E5E5; color: #333; }
+    .label { font-weight: 600; }
   </style>
 </head>
 <body>
   <div class="row">
-    <span class="label">Scaling Factor</span>
-    <input type="number" id="factor" value="4.0" step="0.5">
+    <span class="label">Start Cap</span>
+    <select id="startCap">
+      <option value="NONE">None</option>
+      <option value="ARROW_EQUILATERAL">Arrow</option>
+    </select>
   </div>
-  <button id="apply">Apply Custom Arrowheads</button>
+  <div class="row">
+    <span class="label">End Cap</span>
+    <select id="endCap">
+      <option value="NONE">None</option>
+      <option value="ARROW_EQUILATERAL" selected>Arrow</option>
+    </select>
+  </div>
+  <div class="row">
+    <span class="label">Factor</span>
+    <input type="number" id="factor" value="4.0" step="0.5" style="width: 40px;">
+  </div>
+  
+  <div class="btn-group">
+    <button id="revert">Revert All</button>
+    <button id="apply">Apply</button>
+  </div>
 
   <script>
-    const elFactor = document.getElementById('factor');
     const btnApply = document.getElementById('apply');
+    const btnRevert = document.getElementById('revert');
+
+    function getMsg() {
+      return {
+        factor: parseFloat(document.getElementById('factor').value),
+        startCap: document.getElementById('startCap').value,
+        endCap: document.getElementById('endCap').value
+      };
+    }
 
     btnApply.onclick = () => {
-      parent.postMessage({ 
-        pluginMessage: { 
-          type: 'apply-scaling', 
-          factor: parseFloat(elFactor.value) 
-        } 
-      }, '*');
+      parent.postMessage({ pluginMessage: { type: 'apply-scaling', ...getMsg() } }, '*');
+    };
+
+    btnRevert.onclick = () => {
+      parent.postMessage({ pluginMessage: { type: 'revert' } }, '*');
     };
   </script>
 </body>

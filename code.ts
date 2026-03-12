@@ -1,81 +1,95 @@
-figma.showUI(__html__, { width: 220, height: 110 });
+figma.showUI(__html__, { width: 220, height: 160 });
 
 figma.ui.onmessage = async (msg) => {
-  if (msg.type === 'apply-scaling') {
-    const factor = msg.factor;
-    const selection = figma.currentPage.selection;
+  const selection = figma.currentPage.selection;
 
+  if (msg.type === 'apply-scaling') {
     for (const node of selection) {
       if (node.type === "LINE" || node.type === "VECTOR") {
-        await applyProportionalArrow(node, factor);
+        await applyProportionalArrows(node, msg.factor, msg.startCap, msg.endCap);
+      }
+    }
+  }
+
+  if (msg.type === 'revert') {
+    for (const node of selection) {
+      if (node.type === "LINE" || node.type === "VECTOR") {
+        await revertToOriginal(node);
       }
     }
   }
 };
 
-async function applyProportionalArrow(node: LineNode | VectorNode, factor: number) {
-  // LineNode is a subset of VectorNode. We cast to access vectorNetwork.
+async function applyProportionalArrows(node: LineNode | VectorNode, factor: number, startCap: string, endCap: string) {
   const vectorNode = node as VectorNode;
-  const network = vectorNode.vectorNetwork;
   
+  // 1. Check if we have a backup. If not, save current as original.
+  let originalNetworkJson = node.getPluginData("original-network");
+  let network: VectorNetwork;
+
+  if (!originalNetworkJson) {
+    // First time applying: save the state BEFORE we add custom points
+    network = vectorNode.vectorNetwork;
+    node.setPluginData("original-network", JSON.stringify(network));
+  } else {
+    // Already modified: start from the clean original network to avoid "arrow-on-arrow"
+    network = JSON.parse(originalNetworkJson);
+  }
+
   if (network.vertices.length < 2) return;
 
-  // 1. Get the direction from the last segment
-  const lastSegment = network.segments[network.segments.length - 1];
-  const start = network.vertices[lastSegment.start];
-  const end = network.vertices[lastSegment.end];
-
-  const dx = end.x - start.x;
-  const dy = end.y - start.y;
-  const length = Math.sqrt(dx * dx + dy * dy);
-  
-  if (length === 0) return;
-
-  const ux = dx / length;
-  const uy = dy / length;
-
-  // 2. Calculate arrowhead points
   const weight = typeof node.strokeWeight === 'number' ? node.strokeWeight : 1;
   const arrowSize = weight * factor;
-  const arrowWidth = arrowSize * 0.5; // Controls the "pointiness"
+  const arrowWidth = arrowSize * 0.5;
 
-  const wing1 = {
-    x: end.x - ux * arrowSize + uy * arrowWidth,
-    y: end.y - uy * arrowSize - ux * arrowWidth
+  const newVertices = [...network.vertices];
+  const newSegments = [...network.segments];
+
+  // Helper to add wings
+  const addArrow = (pointIdx: number, fromIdx: number) => {
+    const p = newVertices[pointIdx];
+    const f = newVertices[fromIdx];
+    const dx = p.x - f.x;
+    const dy = p.y - f.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) return;
+
+    const ux = dx / len;
+    const uy = dy / len;
+
+    const w1 = { x: p.x - ux * arrowSize + uy * arrowWidth, y: p.y - uy * arrowSize - ux * arrowWidth };
+    const w2 = { x: p.x - ux * arrowSize - uy * arrowWidth, y: p.y - uy * arrowSize + ux * arrowWidth };
+
+    const w1Idx = newVertices.length;
+    const w2Idx = newVertices.length + 1;
+    newVertices.push(w1, w2);
+    newSegments.push({ start: pointIdx, end: w1Idx }, { start: pointIdx, end: w2Idx });
   };
 
-  const wing2 = {
-    x: end.x - ux * arrowSize - uy * arrowWidth,
-    y: end.y - uy * arrowSize + ux * arrowWidth
-  };
+  // Add arrows based on UI selection
+  if (endCap === 'ARROW_EQUILATERAL') {
+    const lastSeg = network.segments[network.segments.length - 1];
+    addArrow(lastSeg.end, lastSeg.start);
+  }
+  if (startCap === 'ARROW_EQUILATERAL') {
+    const firstSeg = network.segments[0];
+    addArrow(firstSeg.start, firstSeg.end);
+  }
 
-  // 3. Construct the new Network
-  // We keep existing vertices/segments and add the 2 wing points
-  const newVertices = [...network.vertices, wing1, wing2];
-  const endIdx = lastSegment.end;
-  const w1Idx = newVertices.length - 2;
-  const w2Idx = newVertices.length - 1;
+  // Disable native caps and apply
+  node.strokeCap = "NONE";
+  await vectorNode.setVectorNetworkAsync({
+    vertices: newVertices,
+    segments: newSegments,
+    regions: network.regions
+  });
+}
 
-  // IMPORTANT: We must add segments (edges) connected to the 'end' vertex
-  const newSegments = [
-    ...network.segments,
-    { start: endIdx, end: w1Idx }, // Edge from line-end to wing1
-    { start: endIdx, end: w2Idx }  // Edge from line-end to wing2
-  ];
-
-  // 4. Apply changes
-  // Remove native arrowhead first
-  node.strokeCap = "NONE"; 
-
-  // Since manifest.json has "documentAccess": "dynamic-page", 
-  // you MUST use the Async setter.
-  try {
-    await vectorNode.setVectorNetworkAsync({
-      vertices: newVertices,
-      segments: newSegments,
-      regions: network.regions // Keep existing fills if any
-    });
-  } catch (err) {
-    console.error("Failed to update vector network:", err);
+async function revertToOriginal(node: LineNode | VectorNode) {
+  const data = node.getPluginData("original-network");
+  if (data) {
+    const originalNetwork = JSON.parse(data);
+    await (node as VectorNode).setVectorNetworkAsync(originalNetwork);
+    node.setPluginData("original-network", ""); // Clear the backup
   }
 }
