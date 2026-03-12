@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { font-family: sans-serif; padding: 12px; font-size: 11px; color: #333; }
+    .row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+    input[type="number"] { width: 45px; padding: 4px; border: 1px solid #ccc; border-radius: 2px; }
+    button { 
+      width: 100%; padding: 8px; background: #18A0FB; color: white; border: none; 
+      border-radius: 4px; cursor: pointer; font-weight: 500;
+    }
+    button:hover { background: #0D8DE3; }
+    .label { font-weight: 500; }
+  </style>
+</head>
+<body>
+  <div class="row">
+    <span class="label">Scaling Factor</span>
+    <input type="number" id="factor" value="4.0" step="0.5">
+  </div>
+  <button id="apply">Apply Custom Arrowheads</button>
+
+  <script>
+    const elFactor = document.getElementById('factor');
+    const btnApply = document.getElementById('apply');
+
+    btnApply.onclick = () => {
+      parent.postMessage({ 
+        pluginMessage: { 
+          type: 'apply-scaling', 
+          factor: parseFloat(elFactor.value) 
+        } 
+      }, '*');
+    };
+  </script>
+</body>
+</html>
